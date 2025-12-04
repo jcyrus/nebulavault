@@ -1,0 +1,49 @@
+[package]
+name = "nebulavault"
+version = "0.1.0"
+edition = "2021"
+authors = ["jcyrus"]
+description = "High-performance, secure SSH connection manager with GPU-accelerated GUI"
+license = "MIT"
+
+[dependencies]
+# GUI Framework (GPU-accelerated)
+iced = { version = "0.13", features = ["tokio", "wgpu", "advanced"] }
+
+# Async Runtime
+tokio = { version = "1.41", features = ["full"] }
+
+# Database
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "migrate"] }
+
+# SSH Backend
+russh = "0.45"
+russh-keys = "0.45"
+
+# Encryption & Security
+age = "0.10"
+argon2 = "0.5"
+secrecy = "0.8"
+zeroize = "1.8"
+sha2 = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error Handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+flate2 = "1.0"
+rand = "0.8"
+async-trait = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
