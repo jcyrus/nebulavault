@@ -13,12 +13,20 @@ pub enum Message {
     HostsLoadResult(bool, Option<String>),
     IdentitiesLoaded(Vec<Identity>),
     
-    // Navigation
+    // Navigation and Connection
     Connect(String),
     DecryptAndConnect(crate::models::Host, Vec<u8>),
-    ConnectWithCredentials(crate::models::Host, crate::models::IdentityData),
+    ConnectionResult(bool, Option<String>),
     CancelDialog,
     Disconnect,
+    ShowSettings,
+    CloseSettings,
+    TerminalPreferenceChanged(crate::terminal_launcher::TerminalApp),
+    
+    // Window controls
+    CloseWindow,
+    MinimizeWindow,
+    MaximizeWindow,
     
     // Host management
     ShowAddHostDialog,
@@ -54,12 +62,7 @@ pub enum Message {
     // Identity actions
     SaveIdentity,
     IdentitySaved(bool, Option<String>),
+    IdentityLoaded(crate::models::Identity),
     DeleteIdentity(String),
     IdentityDeleted(bool, Option<String>),
-    
-    // Terminal
-    SshConnected(bool, Option<String>),
-    TerminalInput(String),
-    SendCommand,
-    TerminalOutput(String),
 }

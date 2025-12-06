@@ -7,17 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-06
+
 ### Added
 
-- Nothing yet
+#### Glassmorphism UI Transformation
+
+- **Cinematic Visual Identity**: Complete UI overhaul with glassmorphism design
+  - Navy-to-purple gradient background (`GradientBackground` widget)
+  - Glass containers with semi-transparent backgrounds and blur effects
+  - Purple accent colors (#7C3AED) throughout the interface
+  - Smooth hover animations with purple glow effects
+- **Main View Enhancements**:
+  - Centered hero layout with large "Nebula Vault" title
+  - Glass status card showing connection count
+  - Large action cards (240px wide) with custom PNG icons
+  - Colorful gradients on action cards (teal/green for keys, purple/pink for settings)
+  - CleanMyMac-inspired card design with vibrant colors
+- **Sidebar Improvements**:
+  - Glassy gradient backgrounds on connection profile cards (purple-to-blue diagonal)
+  - Enhanced hover states with colored shadows
+  - Rounded corners (12px radius) for modern appearance
+  - Semi-transparent glass effect (white with 15% opacity)
+- **Custom Icons**:
+  - PNG icon support via `iced` image widget
+  - Custom keys.png and settings.png icons (48x48px)
+  - Replaced emoji icons with professional graphics
+- **Window Configuration**:
+  - Native macOS window decorations restored
+  - Standard title bar with working minimize/maximize/close buttons
+  - Draggable window with native controls
+  - Resizable window with minimum size constraints (800x600)
+  - Default window size: 1200x800, centered on screen
+
+#### Dependencies
+
+- **Added**:
+  - `window-vibrancy = "0.5"` - Native blur effects (prepared for future use)
+  - `bytemuck = { version = "1.14", features = ["derive"] }` - Shader uniforms support
+  - `global-hotkey = "0.5"` - Global hotkey support (prepared for future use)
+  - `iced` image feature enabled for PNG icon support
 
 ### Changed
 
-- Nothing yet
+- **UI Architecture**: Refactored main view to use gradient background with layered UI
+- **Settings View**: Applied glassmorphism styling with deep space background and glass containers
+- **Button Styling**: Updated all buttons with purple accents and hover effects
+- **Typography**: Improved text hierarchy with better sizing and colors
+- **Window Decorations**: Changed from frameless to native decorations for better UX
 
 ### Fixed
 
-- Nothing yet
+- **Window Controls**: Restored native macOS window controls (close, minimize, maximize)
+- **Window Dragging**: Re-enabled standard window dragging via title bar
+- **Window Resizing**: Fixed window resizing by restoring native decorations
+
+### Technical Details
+
+- **Widget Structure**: Created `src/gui/widgets/` module for reusable components
+  - `glass.rs` - GlassContainer widget (placeholder)
+  - `nebula_shader.rs` - Background shader widget (static placeholder)
+  - `gradient_bg.rs` - Gradient background implementation
+- **Gradient Implementation**:
+  - 4-stop linear gradient (135° diagonal)
+  - Deep navy → lighter navy → purple tint → deep purple
+  - Smooth color transitions for dynamic appearance
+- **Animation System**:
+  - GPU-accelerated hover states
+  - Shadow blur transitions (4px → 12px/16px/20px)
+  - Border thickness changes (1px → 2px)
+  - Color opacity shifts for smooth effects
+
+### Known Limitations
+
+- **WGSL Shader**: Animated cosmic cloud shader deferred (iced 0.13 canvas API limitations)
+- **Native Vibrancy**: macOS blur effects not yet implemented (requires window handle access)
+- **Global Hotkey**: Prepared but not yet implemented
 
 ## [0.1.0] - 2024-12-05
 

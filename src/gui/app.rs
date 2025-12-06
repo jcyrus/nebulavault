@@ -2,6 +2,7 @@ use iced::{Element, Subscription, Task};
 use super::messages::Message;
 use super::state::{AppState, NebulaVaultState};
 use crate::{db, models, ssh};
+use std::sync::Arc;
 
 const DB_PATH: &str = "nebulavault.db";
 
@@ -157,6 +158,28 @@ impl NebulaVault {
                 Task::none()
             }
 
+            Message::Disconnect => {
+                self.state.state = AppState::Ready;
+                Task::none()
+            }
+
+            Message::CloseWindow => {
+                std::process::exit(0);
+                #[allow(unreachable_code)]
+                Task::none()
+            }
+
+            Message::MinimizeWindow => {
+                // Minimize not yet implemented - requires window handle
+                Task::none()
+            }
+
+            Message::MaximizeWindow => {
+                // Maximize not yet implemented - requires window handle  
+                Task::none()
+            }
+
+
             Message::CancelDialog => {
                 self.state.state = AppState::Ready;
                 Task::none()
@@ -188,6 +211,7 @@ impl NebulaVault {
             }
 
             Message::SaveHost => {
+                let editing_id = self.state.host_form.editing_id.clone();
                 let name = self.state.host_form.name.clone();
                 let hostname = self.state.host_form.hostname.clone();
                 let port = self.state.host_form.port.parse::<i64>().unwrap_or(22);
@@ -203,9 +227,19 @@ impl NebulaVault {
                             Err(e) => return (false, Some(format!("Database error: {}", e))),
                         };
 
-                        match db::create_host(&pool, None, identity_id, name, hostname, port, username, None).await {
-                            Ok(_) => (true, None),
-                            Err(e) => (false, Some(format!("Failed to create host: {}", e))),
+                        // Check if we're editing or creating
+                        if let Some(id) = editing_id {
+                            // Update existing host
+                            match db::update_host(&pool, &id, name, hostname, port, username, identity_id).await {
+                                Ok(_) => (true, None),
+                                Err(e) => (false, Some(format!("Failed to update host: {}", e))),
+                            }
+                        } else {
+                            // Create new host
+                            match db::create_host(&pool, None, identity_id, name, hostname, port, username, None).await {
+                                Ok(_) => (true, None),
+                                Err(e) => (false, Some(format!("Failed to create host: {}", e))),
+                            }
                         }
                     },
                     |(success, error)| Message::HostSaved(success, error),
@@ -291,9 +325,28 @@ impl NebulaVault {
                 Task::none()
             }
 
-            Message::ShowEditIdentityDialog(_identity_id) => {
-                // TODO: Implement edit
-                Task::none()
+            Message::ShowEditIdentityDialog(identity_id) => {
+                // Load identity from database and populate form
+                self.state.state = AppState::Loading;
+                
+                Task::perform(
+                    async move {
+                        let pool = match db::init_db(DB_PATH).await {
+                            Ok(p) => p,
+                            Err(e) => return Err(format!("Database error: {}", e)),
+                        };
+
+                        match db::get_identity(&pool, &identity_id).await {
+                            Ok(Some(identity)) => Ok(identity),
+                            Ok(None) => Err("Identity not found".to_string()),
+                            Err(e) => Err(format!("Failed to load identity: {}", e)),
+                        }
+                    },
+                    |result| match result {
+                        Ok(identity) => Message::IdentityLoaded(identity),
+                        Err(e) => Message::IdentitySaved(false, Some(e)),
+                    },
+                )
             }
 
             Message::ShowIdentityDeleteConfirm(identity_id) => {
@@ -323,6 +376,17 @@ impl NebulaVault {
 
             Message::IdentityPassphraseChanged(passphrase) => {
                 self.state.identity_form.passphrase = passphrase;
+                Task::none()
+            }
+
+            Message::IdentityLoaded(identity) => {
+                // Populate form with loaded identity
+                self.state.identity_form.editing_id = Some(identity.id);
+                self.state.identity_form.name = identity.name;
+                // Note: We can't decrypt the identity data without re-entering the master password
+                // So the user will need to re-enter the password/key
+                // This is a security feature - we don't want to expose decrypted credentials
+                self.state.state = AppState::IdentityDialog;
                 Task::none()
             }
 
@@ -485,13 +549,9 @@ impl NebulaVault {
                 }
             }
 
-            // Terminal/SSH
+            // Connection - Launch external terminal
             Message::Connect(host_id) => {
                 if let Some(host) = self.state.hosts.iter().find(|h| h.id == host_id).cloned() {
-                    self.state.terminal.active_host_id = Some(host_id.clone());
-                    self.state.terminal.output.clear();
-                    self.state.terminal.input.clear();
-                    
                     self.state.state = AppState::Loading;
 
                     // Load encrypted identity from database
@@ -513,7 +573,7 @@ impl NebulaVault {
                                 if let (Some(host), Some(encrypted_data)) = (host_opt, encrypted_data_opt) {
                                     Message::DecryptAndConnect(host, encrypted_data)
                                 } else {
-                                    Message::SshConnected(false, error_opt)
+                                    Message::ConnectionResult(false, error_opt)
                                 }
                             },
                         )
@@ -529,7 +589,7 @@ impl NebulaVault {
             }
 
             Message::DecryptAndConnect(host, encrypted_data) => {
-                // Decrypt identity synchronously (vault is not Send)
+                // Decrypt identity and launch terminal
                 let vault = match &self.state.vault {
                     Some(v) => v,
                     None => {
@@ -540,8 +600,58 @@ impl NebulaVault {
 
                 match vault.decrypt_identity(&encrypted_data) {
                     Ok(identity_data) => {
-                        // Now connect with decrypted credentials
-                        Task::done(Message::ConnectWithCredentials(host, identity_data))
+                        // Launch external terminal with SSH connection
+                        let terminal_pref = self.state.terminal_preference.clone();
+                        
+                        let result = match identity_data {
+                            models::IdentityData::SshKey { private_key, passphrase: _ } => {
+                                // Write key to temp file and launch terminal
+                                match crate::terminal_launcher::write_temp_key(&private_key) {
+                                    Ok(key_path) => {
+                                        let launch_result = crate::terminal_launcher::launch_ssh_connection(
+                                            &terminal_pref,
+                                            &host.hostname,
+                                            host.port as u16,
+                                            &host.username,
+                                            Some(&key_path),
+                                        );
+                                        
+                                        // Clean up temp key file after delay (let SSH read it first)
+                                        let key_path_clone = key_path.clone();
+                                        tokio::spawn(async move {
+                                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                                            let _ = crate::terminal_launcher::cleanup_temp_key(&key_path_clone);
+                                        });
+                                        
+                                        launch_result
+                                    }
+                                    Err(e) => Err(e),
+                                }
+                            }
+                            models::IdentityData::Password { password: _ } => {
+                                // For password auth, launch terminal without key
+                                // User will need to enter password manually
+                                crate::terminal_launcher::launch_ssh_connection(
+                                    &terminal_pref,
+                                    &host.hostname,
+                                    host.port as u16,
+                                    &host.username,
+                                    None,
+                                )
+                            }
+                        };
+
+                        self.state.state = AppState::Ready;
+                        match result {
+                            Ok(_) => {
+                                // Success - terminal launched
+                                Task::none()
+                            }
+                            Err(e) => {
+                                self.state.error_message = Some(format!("Failed to launch terminal: {}", e));
+                                Task::none()
+                            }
+                        }
                     }
                     Err(e) => {
                         self.state.state = AppState::Ready;
@@ -551,87 +661,33 @@ impl NebulaVault {
                 }
             }
 
-            Message::ConnectWithCredentials(host, identity_data) => {
-                // Connect to SSH with decrypted credentials
-                Task::perform(
-                    async move {
-                        let result = match identity_data {
-                            models::IdentityData::Password { password } => {
-                                ssh::SshSession::connect_password(
-                                    &host.hostname,
-                                    host.port as u16,
-                                    &host.username,
-                                    &password,
-                                ).await
-                            }
-                            models::IdentityData::SshKey { private_key, passphrase } => {
-                                ssh::SshSession::connect_key(
-                                    &host.hostname,
-                                    host.port as u16,
-                                    &host.username,
-                                    &private_key,
-                                    passphrase.as_deref(),
-                                ).await
-                            }
-                        };
-
-                        match result {
-                            Ok(_session) => {
-                                // TODO: Store session for data streaming
-                                (true, None)
-                            }
-                            Err(e) => (false, Some(format!("SSH connection failed: {}", e))),
-                        }
-                    },
-                    |(success, error)| Message::SshConnected(success, error),
-                )
-            }
-
-            Message::SshConnected(success, error) => {
-                if success {
-                    self.state.state = AppState::Terminal;
-                    self.state.terminal.output.push_str("Connected successfully!\n\n");
-                    // TODO: Start SSH data streaming subscription
-                    Task::none()
-                } else {
-                    self.state.state = AppState::Ready;
-                    if let Some(err) = error {
-                        self.state.error_message = Some(err);
-                    }
-                    Task::none()
+            Message::ConnectionResult(success, error) => {
+                self.state.state = AppState::Ready;
+                if !success {
+                    self.state.error_message = error;
                 }
-            }
-
-            Message::TerminalInput(input) => {
-                self.state.terminal.input = input;
-                Task::none()
-            }
-
-            Message::SendCommand => {
-                let command = self.state.terminal.input.trim().to_string();
-                if !command.is_empty() {
-                    self.state.terminal.output.push_str(&format!("$ {}\n", command));
-                    
-                    // TODO: Send command to SSH session
-                    // For now, show a message that streaming isn't implemented yet
-                    self.state.terminal.output.push_str(
-                        "⚠️  SSH data streaming not yet implemented.\n\
-                         Connection established, but terminal I/O requires subscription-based streaming.\n\n"
-                    );
-                    
-                    self.state.terminal.input.clear();
-                }
-                Task::none()
-            }
-
-            Message::TerminalOutput(output) => {
-                self.state.terminal.output.push_str(&output);
                 Task::none()
             }
 
             Message::Disconnect => {
+                // Just return to main view
                 self.state.state = AppState::Ready;
-                self.state.terminal.clear();
+                self.state.ssh_session = None; // Clear session on disconnect
+                Task::none()
+            }
+
+            Message::ShowSettings => {
+                self.state.state = AppState::Settings;
+                Task::none()
+            }
+
+            Message::CloseSettings => {
+                self.state.state = AppState::Ready;
+                Task::none()
+            }
+
+            Message::TerminalPreferenceChanged(terminal) => {
+                self.state.terminal_preference = terminal;
                 Task::none()
             }
         }
@@ -642,6 +698,7 @@ impl NebulaVault {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
+        // No subscriptions needed
         Subscription::none()
     }
 }

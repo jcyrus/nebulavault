@@ -203,6 +203,35 @@ pub async fn create_host(
     })
 }
 
+/// Update an existing host
+pub async fn update_host(
+    pool: &SqlitePool,
+    id: &str,
+    name: String,
+    hostname: String,
+    port: i64,
+    username: String,
+    identity_id: Option<String>,
+) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "UPDATE hosts SET name = ?, hostname = ?, port = ?, username = ?, identity_id = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&name)
+    .bind(&hostname)
+    .bind(port)
+    .bind(&username)
+    .bind(&identity_id)
+    .bind(&now)
+    .bind(id)
+    .execute(pool)
+    .await
+    .context("Failed to update host")?;
+
+    Ok(())
+}
+
 /// Get all hosts
 pub async fn get_all_hosts(pool: &SqlitePool) -> Result<Vec<Host>> {
     let hosts = sqlx::query_as::<_, Host>("SELECT * FROM hosts ORDER BY name")

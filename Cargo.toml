@@ -1,6 +1,6 @@
 [package]
 name = "nebulavault"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["jcyrus"]
 description = "High-performance, secure SSH connection manager with GPU-accelerated GUI"
@@ -8,7 +8,7 @@ license = "MIT"
 
 [dependencies]
 # GUI Framework (GPU-accelerated)
-iced = { version = "0.13", features = ["tokio", "wgpu", "advanced"] }
+iced = { version = "0.13", features = ["tokio", "wgpu", "advanced", "image"] }
 
 # Async Runtime
 tokio = { version = "1.41", features = ["full"] }
@@ -41,6 +41,13 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 flate2 = "1.0"
 rand = "0.8"
 async-trait = "0.1"
+futures = "0.3"
+
+# UI Enhancement - Glassmorphism
+window-vibrancy = "0.5"
+bytemuck = { version = "1.14", features = ["derive"] }
+global-hotkey = "0.5"
+
 
 [profile.release]
 opt-level = 3

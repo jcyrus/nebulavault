@@ -159,12 +159,51 @@ impl SshSession {
         }
     }
 
-    /// Read available data from the channel
-    pub async fn read_data(&mut self) -> Result<Option<String>> {
-        // This is a simplified version
-        // In a real implementation, we'd use a subscription to continuously read
-        // For now, we'll return None and handle this in the subscription
-        Ok(None)
+    /// Read available data from the channel (non-blocking)
+    pub async fn read_data(&mut self) -> Result<Option<Vec<u8>>> {
+        if let Some(channel) = &mut self.channel {
+            // Use tokio::time::timeout for non-blocking read
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(10),
+                channel.wait()
+            ).await {
+                Ok(Some(msg)) => {
+                    match msg {
+                        russh::ChannelMsg::Data { data } => {
+                            Ok(Some(data.to_vec()))
+                        }
+                        russh::ChannelMsg::ExtendedData { data, ext } => {
+                            // Extended data (stderr)
+                            eprintln!("Extended data (type {}): {:?}", ext, String::from_utf8_lossy(&data));
+                            Ok(Some(data.to_vec()))
+                        }
+                        russh::ChannelMsg::Eof => {
+                            // Channel closed
+                            Ok(None)
+                        }
+                        russh::ChannelMsg::ExitStatus { exit_status } => {
+                            eprintln!("Exit status: {}", exit_status);
+                            Ok(None)
+                        }
+                        _ => {
+                            // Other messages (ignore for now)
+                            Ok(None)
+                        }
+                    }
+                }
+                Ok(None) => {
+                    // No more messages
+                    Ok(None)
+                }
+                Err(_) => {
+                    // Timeout - no data available
+                    Ok(None)
+                }
+            }
+        } else {
+            // No active channel - return None instead of error to avoid spam
+            Ok(None)
+        }
     }
 
     /// Close the session
@@ -182,5 +221,18 @@ impl SshSession {
             .map_err(|e| anyhow!("Failed to disconnect: {}", e))?;
 
         Ok(())
+    }
+}
+
+// Manual Debug implementation since Handle<Client> doesn't implement Debug
+impl std::fmt::Debug for SshSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SshSession")
+            .field("host_id", &self.host_id)
+            .field("hostname", &self.hostname)
+            .field("username", &self.username)
+            .field("handle", &"<Handle>")
+            .field("channel", &self.channel.is_some())
+            .finish()
     }
 }

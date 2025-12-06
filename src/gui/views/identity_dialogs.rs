@@ -39,6 +39,8 @@ pub fn view_identity_list(state: &NebulaVaultState) -> Element<'_, Message> {
         identity_list = identity_list.push(empty_text);
     } else {
         for identity in &state.identities {
+            let id_for_edit = identity.id.clone();
+            let id_for_delete = identity.id.clone();
             let name_owned = identity.name.clone();
             
             let name_text = text(name_owned)
@@ -50,18 +52,56 @@ pub fn view_identity_list(state: &NebulaVaultState) -> Element<'_, Message> {
             let type_icon = text("🔑")
                 .size(16);
 
-            let item_row = row![type_icon, name_text]
+            let info_row = row![type_icon, name_text]
                 .spacing(12)
-                .align_y(iced::Alignment::Center);
+                .align_y(iced::Alignment::Center)
+                .width(Length::Fill);
 
-            let item_button = button(item_row)
-                .padding(12)
-                .width(Length::Fill)
+            // Add edit/delete buttons
+            let edit_button = button(text("Edit").size(12))
+                .on_press(Message::ShowEditIdentityDialog(id_for_edit))
+                .padding([4, 8])
                 .style(|_theme, status| button::Style {
                     background: Some(iced::Background::Color(match status {
-                        button::Status::Hovered => iced::Color::from_rgb(0.2, 0.2, 0.23),
-                        _ => iced::Color::from_rgb(0.15, 0.15, 0.18),
+                        button::Status::Hovered => iced::Color::from_rgb(0.3, 0.5, 0.7),
+                        _ => iced::Color::from_rgb(0.25, 0.25, 0.28),
                     })),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    text_color: iced::Color::WHITE,
+                    ..Default::default()
+                });
+
+            let delete_button = button(text("Del").size(12))
+                .on_press(Message::ShowIdentityDeleteConfirm(id_for_delete))
+                .padding([4, 8])
+                .style(|_theme, status| button::Style {
+                    background: Some(iced::Background::Color(match status {
+                        button::Status::Hovered => iced::Color::from_rgb(0.8, 0.3, 0.3),
+                        _ => iced::Color::from_rgb(0.25, 0.25, 0.28),
+                    })),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    text_color: iced::Color::WHITE,
+                    ..Default::default()
+                });
+
+            let actions = row![edit_button, delete_button].spacing(4);
+
+            let item_row = row![info_row, actions]
+                .spacing(8)
+                .align_y(iced::Alignment::Center)
+                .padding(12)
+                .width(Length::Fill);
+
+            let item_container = container(item_row)
+                .width(Length::Fill)
+                .style(|_theme| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgb(0.15, 0.15, 0.18))),
                     border: iced::Border {
                         color: iced::Color::from_rgb(0.3, 0.3, 0.33),
                         width: 1.0,
@@ -70,7 +110,7 @@ pub fn view_identity_list(state: &NebulaVaultState) -> Element<'_, Message> {
                     ..Default::default()
                 });
 
-            identity_list = identity_list.push(item_button);
+            identity_list = identity_list.push(item_container);
         }
     }
 
